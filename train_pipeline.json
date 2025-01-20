@@ -1,0 +1,63 @@
+{
+  "components": {
+    "comp-train-model-op": {
+      "executorLabel": "exec-train-model-op",
+      "inputDefinitions": {
+        "parameters": {
+          "base_image": {
+            "defaultValue": "python:3.9",
+            "isOptional": true,
+            "parameterType": "STRING"
+          }
+        }
+      }
+    }
+  },
+  "defaultPipelineRoot": "gs://vertex-ai-despliegue-en-gcp/pipeline-root",
+  "deploymentSpec": {
+    "executors": {
+      "exec-train-model-op": {
+        "container": {
+          "args": [
+            "--executor_input",
+            "{{$}}",
+            "--function_to_execute",
+            "train_model_op"
+          ],
+          "command": [
+            "sh",
+            "-c",
+            "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip || python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location 'kfp==2.11.0' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"$0\" \"$@\"\n",
+            "sh",
+            "-ec",
+            "program_path=$(mktemp -d)\n\nprintf \"%s\" \"$0\" > \"$program_path/ephemeral_component.py\"\n_KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         \"$program_path/ephemeral_component.py\"                         \"$@\"\n",
+            "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import *\n\ndef train_model_op(base_image: str = 'python:3.9') -> None:\n    # Crear datos de prueba y entrenar el modelo\n    X, y = make_regression(n_samples=100, n_features=1, noise=0.1)\n    model = LinearRegression()\n    model.fit(X, y)\n\n    # Guardar el modelo\n    model_filename = '/tmp/trained_model.pkl'\n    joblib.dump(model, model_filename)\n\n    # Subir el modelo a Cloud Storage\n    client = storage.Client()\n    bucket = client.get_bucket('vertex-ai-despliegue-en-gcp')  # Reemplaza con tu bucket\n    blob = bucket.blob('models/trained_model.pkl')\n    blob.upload_from_filename(model_filename)\n    print(\"Modelo entrenado y subido a Cloud Storage.\")\n\n"
+          ],
+          "image": "python:3.9"
+        }
+      }
+    }
+  },
+  "pipelineInfo": {
+    "name": "train-model-pipeline"
+  },
+  "root": {
+    "dag": {
+      "tasks": {
+        "train-model-op": {
+          "cachingOptions": {
+            "enableCache": true
+          },
+          "componentRef": {
+            "name": "comp-train-model-op"
+          },
+          "taskInfo": {
+            "name": "train-model-op"
+          }
+        }
+      }
+    }
+  },
+  "schemaVersion": "2.1.0",
+  "sdkVersion": "kfp-2.11.0"
+}

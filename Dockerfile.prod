@@ -1,0 +1,33 @@
+#FROM python:3.9-slim-buster #Funciona perfectamente si quieres DEBIAN
+#Voy a usar el de acontinuación porque quiero UBUNTU
+FROM ubuntu:20.04
+
+#Establecemos las variables de entornodock
+ENV PATH="/root/miniconda3/bin:${PATH}"
+ARG PATH="/root/miniconda3/bin:${PATH}"
+
+RUN apt-get update && apt-get install -y wget git sox libsox-fmt-all
+
+# Descargar e instalar Miniconda
+#Para WINDOWS o Linux
+RUN wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /tmp/miniconda.sh \
+#Para MAC
+#RUN wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-aarch64.sh -O /tmp/miniconda.sh \
+    # Crea un directorio .conda en el directorio home del usuario root.
+    && mkdir /root/.conda \
+    # Ejecuta el script de instalación de Miniconda en modo silencioso (sin interacción del usuario, con -b).
+    && bash /tmp/miniconda.sh -b -p /root/miniconda3 \
+    # Elimina el script de instalación después de que Miniconda ha sido instalado para mantener limpio el entorno Docker.
+    && rm -f /tmp/miniconda.sh
+
+#cd /root
+WORKDIR /root
+
+# Copiar el archivo environment.yml al directorio de trabajo
+COPY environment.yml .
+
+# Actualizar conda e instalar pip
+RUN conda update -n base -c defaults conda -y
+RUN conda install pip -y
+
+RUN conda env create -f environment.yml

@@ -1,0 +1,150 @@
+# PIPELINE DEFINITION
+# Name: prediction-pipeline
+components:
+  comp-impute-data-op:
+    executorLabel: exec-impute-data-op
+  comp-prediction-op:
+    executorLabel: exec-prediction-op
+  comp-validate-bigquery-tables-op:
+    executorLabel: exec-validate-bigquery-tables-op
+defaultPipelineRoot: gs://vertex-ai-despliegue-en-gcp/pipeline-root
+deploymentSpec:
+  executors:
+    exec-impute-data-op:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - impute_data_op
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.11.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef impute_data_op() -> None:\n    data = pd.DataFrame({\n      \
+          \  'feature1': [1, 2, 3, None, 5],\n        'feature2': [None, 2, 3, 4,\
+          \ 5]\n    })\n\n    # Imputaci\xF3n de datos faltantes\n    imputer = SimpleImputer(strategy='mean')\n\
+          \    imputed_data = imputer.fit_transform(data)\n    print(\"Datos imputados.\"\
+          )\n\n"
+        image: python:3.9
+    exec-prediction-op:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - prediction_op
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.11.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef prediction_op() -> None:\n    # Cargar el modelo desde Cloud\
+          \ Storage\n    client = storage.Client()\n    bucket = client.get_bucket('vertex-ai-despliegue-en-gcp')\n\
+          \    blob = bucket.blob('models/trained_model.pkl')\n\n    # Descargar el\
+          \ archivo binario del modelo\n    model = joblib.load(blob.download_as_bytes())\n\
+          \n    # Simular datos para predicci\xF3n\n    data = pd.DataFrame({\n  \
+          \      'feature1': [1, 2, 3],\n        'feature2': [4, 5, 6]\n    })\n\n\
+          \    # Realizar la predicci\xF3n\n    predictions = model.predict(data)\n\
+          \n    # Almacenar en BigQuery\n    bq_client = bigquery.Client()\n    dataset_id\
+          \ = 'project-mlops9-rbarzola.predicciones_dataset'  # Reemplazado con tu\
+          \ dataset\n    table_id = 'predictions_table'\n    rows_to_insert = [{'prediction':\
+          \ pred} for pred in predictions]\n    bq_client.insert_rows_json(f'{dataset_id}.{table_id}',\
+          \ rows_to_insert)\n    print(\"Predicciones almacenadas en BigQuery.\")\n\
+          \n"
+        image: python:3.9
+    exec-validate-bigquery-tables-op:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - validate_bigquery_tables_op
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.11.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef validate_bigquery_tables_op() -> None:\n    client = bigquery.Client()\n\
+          \    dataset_id = 'project-mlops9-rbarzola.predicciones_dataset'  # Reemplazado\
+          \ con tu dataset\n    tables = ['predicciones_dataset', 'resultados_predicciones']\
+          \  # Nombres de las tablas necesarias\n\n    missing_tables = []\n    for\
+          \ table in tables:\n        try:\n            client.get_table(f'{dataset_id}.{table}')\n\
+          \        except Exception:\n            missing_tables.append(table)\n\n\
+          \    if missing_tables:\n        raise ValueError(f\"Las siguientes tablas\
+          \ faltan: {', '.join(missing_tables)}\")\n    else:\n        print(\"Todas\
+          \ las tablas est\xE1n disponibles.\")\n\n"
+        image: python:3.9
+pipelineInfo:
+  name: prediction-pipeline
+root:
+  dag:
+    tasks:
+      impute-data-op:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-impute-data-op
+        taskInfo:
+          name: impute-data-op
+      prediction-op:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-prediction-op
+        dependentTasks:
+        - impute-data-op
+        taskInfo:
+          name: prediction-op
+      validate-bigquery-tables-op:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-validate-bigquery-tables-op
+        taskInfo:
+          name: validate-bigquery-tables-op
+schemaVersion: 2.1.0
+sdkVersion: kfp-2.11.0
